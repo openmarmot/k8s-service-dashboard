@@ -13,17 +13,32 @@ service_links = []
 last_updated = "Never"
 
 def load_kube_config():
-    """Try in-cluster config first, then fallback to ~/.kube/config"""
-    try:
-        kubernetes.config.load_incluster_config()
-        print("Loaded in-cluster config")
-    except kubernetes.config.ConfigException:
-        try:
-            kubernetes.config.load_kube_config()
-            print("Loaded kubeconfig from file")
-        except Exception as e:
-            print(f"Failed to load any kube config: {e}")
-            raise
+    """Auto-detect and load kubeconfig for k3s, standard Kubernetes, or fallback"""
+    possible_configs = [
+        "/etc/rancher/k3s/k3s.yaml",          # k3s 
+        "/etc/kubernetes/admin.conf",         # Standard kubeadm / many distro installs
+        os.path.expanduser("~/.kube/config"), # User kubeconfig (common for dev/root access)
+    ]
+
+    loaded = False
+    for config_path in possible_configs:
+        if os.path.exists(config_path):
+            try:
+                kubernetes.config.load_kube_config(config_file=config_path)
+                print(f"Successfully loaded kubeconfig from: {config_path}")
+                loaded = True
+                break
+            except Exception as e:
+                print(f"Failed to load {config_path}: {e}")
+                # Continue trying others
+
+    if not loaded:
+        raise FileNotFoundError(
+            "No valid kubeconfig found. Checked:\n" +
+            "\n".join(f"  - {p} (missing or invalid)" for p in possible_configs) +
+            "\n\nEnsure one of these files exists and is readable by root, "
+            "or place a valid kubeconfig in one of these locations."
+        )
 
 def collect_external_services():
     global service_links, last_updated
