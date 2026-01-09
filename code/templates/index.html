@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K8s External Services Dashboard</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { color: #2c3e50; }
+        .last-update { color: #7f8c8d; font-size: 0.9em; margin-bottom: 2rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f4f6f9; }
+        tr:hover { background: #f8f9fa; }
+        .ns { font-weight: bold; color: #2980b9; }
+        .badge { 
+            display: inline-block; 
+            padding: 4px 8px; 
+            border-radius: 12px; 
+            font-size: 0.75em; 
+            font-weight: bold;
+        }
+        .lb { background: #27ae60; color: white; }
+        .np { background: #f39c12; color: white; }
+        a { color: #e74c3c; text-decoration: none; font-weight: 500; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>Kubernetes External Services Dashboard</h1>
+    
+    <div class="last-update">Last updated: {{ last_updated }} • Found {{ count }} external endpoints</div>
+
+    {% if services %}
+    <table>
+        <thead>
+            <tr>
+                <th>Namespace</th>
+                <th>Service</th>
+                <th>Type</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for s in services %}
+            <tr>
+                <td class="ns">{{ s.namespace }}</td>
+                <td>{{ s.service }}</td>
+                <td><span class="badge {{ 'lb' if s.type == 'LoadBalancer' else 'np' }}">{{ s.type }}</span></td>
+                <td><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.url }}</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#e74c3c; font-weight:bold;">No external (LoadBalancer/NodePort) services found at the moment.</p>
+    {% endif %}
+</body>
+</html>
