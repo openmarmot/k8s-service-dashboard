@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="300">  <!-- Auto-refresh every 5 minutes (300 seconds) -->
     <title>K8s External Services Dashboard</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
         h1 { color: #2c3e50; }
         .last-update { color: #7f8c8d; font-size: 0.9em; margin-bottom: 2rem; }
+        .refresh-note { color: #27ae60; font-size: 0.9em; font-weight: bold; margin-bottom: 1rem; }
         table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background: #f4f6f9; }
@@ -29,6 +31,8 @@
 <body>
     <h1>Kubernetes External Services Dashboard</h1>
     
+    <div class="refresh-note">Page auto-refreshes every 5 minutes</div>
+    
     <div class="last-update">Last updated: {{ last_updated }} • Found {{ count }} external endpoints</div>
 
     {% if services %}
@@ -38,16 +42,16 @@
                 <th>Namespace</th>
                 <th>Service</th>
                 <th>Type</th>
-                <th>Link</th>
+                <th>External Address</th>
             </tr>
         </thead>
         <tbody>
         {% for s in services %}
             <tr>
                 <td class="ns">{{ s.namespace }}</td>
-                <td>{{ s.service }}</td>
+                <td><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.service }}</a></td>
                 <td><span class="badge {{ 'lb' if s.type == 'LoadBalancer' else 'np' }}">{{ s.type }}</span></td>
-                <td><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.url }}</a></td>
+                <td>{{ s.external_addr }}</td>
             </tr>
         {% endfor %}
         </tbody>

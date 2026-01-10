@@ -15,7 +15,7 @@ last_updated = "Never"
 def load_kube_config():
     """Auto-detect and load kubeconfig for k3s, standard Kubernetes, or fallback"""
     possible_configs = [
-        "/etc/rancher/k3s/k3s.yaml",          # k3s 
+        "/etc/rancher/k3s/k3s.yaml",          # k3s (most common)
         "/etc/kubernetes/admin.conf",         # Standard kubeadm / many distro installs
         os.path.expanduser("~/.kube/config"), # User kubeconfig (common for dev/root access)
     ]
@@ -30,14 +30,11 @@ def load_kube_config():
                 break
             except Exception as e:
                 print(f"Failed to load {config_path}: {e}")
-                # Continue trying others
 
     if not loaded:
         raise FileNotFoundError(
             "No valid kubeconfig found. Checked:\n" +
-            "\n".join(f"  - {p} (missing or invalid)" for p in possible_configs) +
-            "\n\nEnsure one of these files exists and is readable by root, "
-            "or place a valid kubeconfig in one of these locations."
+            "\n".join(f"  - {p} (missing or invalid)" for p in possible_configs)
         )
 
 def collect_external_services():
@@ -45,6 +42,24 @@ def collect_external_services():
 
     v1 = kubernetes.client.CoreV1Api()
 
+    # Collect node IPs (prefer ExternalIP if available)
+    node_ips = set()
+    try:
+        nodes = v1.list_node()
+        for node in nodes.items:
+            for addr in node.status.addresses or []:
+                if addr.address:
+                    if addr.type == "ExternalIP":
+                        node_ips.add(addr.address)
+                    elif addr.type == "InternalIP":
+                        node_ips.add(addr.address)
+    except Exception as e:
+        print(f"Error listing nodes: {e}")
+
+    node_ips = sorted(node_ips)
+    single_node = len(node_ips) == 1
+
+    # Collect services
     try:
         services = v1.list_service_for_all_namespaces(watch=False)
     except ApiException as e:
@@ -59,63 +74,83 @@ def collect_external_services():
 
         namespace = svc.metadata.namespace
         name = svc.metadata.name
+        ports = svc.spec.ports or []
+        if not ports:
+            continue
 
-        # Prefer LoadBalancer external IP/hostname first
-        external_addrs = []
-        if svc.status.load_balancer and svc.status.load_balancer.ingress:
-            for ing in svc.status.load_balancer.ingress:
-                if ing.hostname:
-                    external_addrs.append(ing.hostname)
-                elif ing.ip:
-                    external_addrs.append(ing.ip)
+        for port_spec in ports:
+            port_name = port_spec.name or ""
+            service_port = port_spec.port
+            node_port = port_spec.node_port
 
-        # Fallback to NodePort (showing nodePort only - real usage needs node IPs)
-        if not external_addrs and svc.spec.type == "NodePort":
-            for port in svc.spec.ports or []:
-                if port.node_port:
-                    external_addrs.append(f"node-ip:{port.node_port}")
+            display_name = name
+            if len(ports) > 1 or port_name:
+                display_name += f" ({port_name or service_port})"
 
-        for addr in external_addrs:
-            proto = "https" if "443" in str(addr) else "http"
-            port_str = ""
-            host = addr
+            if svc.spec.type == "LoadBalancer":
+                ingress_list = (svc.status.load_balancer.ingress or []) if svc.status.load_balancer else []
+                if not ingress_list:
+                    continue
 
-            # Clean up address format
-            if ":" in addr and not addr.startswith("node-ip:"):
-                host, port_part = addr.split(":", 1)
-                if port_part not in ("80", "443"):
-                    port_str = f":{port_part}"
+                for ing in ingress_list:
+                    host = ing.hostname or ing.ip
+                    if not host:
+                        continue
 
-            # Try to find reasonable target port
-            target_port = 80
-            if svc.spec.ports:
-                for p in svc.spec.ports:
-                    if p.port in (80, 443):
-                        target_port = p.port
-                        break
-                    try:
-                        if p.target_port:
-                            target_port = int(p.target_port)
-                    except:
-                        pass
+                    proto = "https" if str(service_port).endswith("443") else "http"
+                    url = f"{proto}://{host}"
+                    if service_port not in (80, 443):
+                        url += f":{service_port}"
 
-            url = f"{proto}://{host}{port_str}"
-            if target_port not in (80, 443):
-                url += f":{target_port}"
+                    addr_display = host if service_port in (80, 443) else f"{host}:{service_port}"
 
-            found.append({
-                "namespace": namespace,
-                "service": name,
-                "url": url,
-                "type": svc.spec.type,
-                "external_addr": addr
-            })
+                    found.append({
+                        "namespace": namespace,
+                        "service": display_name,
+                        "url": url,
+                        "type": "LoadBalancer",
+                        "external_addr": addr_display
+                    })
 
-    service_links = sorted(found, key=lambda x: x["namespace"].lower())
+            elif svc.spec.type == "NodePort" and node_port:
+                proto = "https" if str(node_port).endswith("443") else "http"
+                url_base_template = f"{proto}://%s"
+                addr_template = "%s" if node_port in (80, 443) else "%s:{node_port}"
+
+                if node_ips:
+                    for node_ip in node_ips:
+                        url = url_base_template % node_ip
+                        if node_port not in (80, 443):
+                            url += f":{node_port}"
+
+                        addr_display = addr_template % node_ip
+
+                        service_display = display_name
+                        if not single_node:
+                            service_display += f" (via {node_ip})"
+
+                        found.append({
+                            "namespace": namespace,
+                            "service": service_display,
+                            "url": url,
+                            "type": "NodePort",
+                            "external_addr": addr_display
+                        })
+                else:
+                    # Fallback placeholder
+                    url = f"{proto}://<node-ip>:{node_port}" if node_port not in (80, 443) else f"{proto}://<node-ip>"
+                    found.append({
+                        "namespace": namespace,
+                        "service": display_name,
+                        "url": url,
+                        "type": "NodePort",
+                        "external_addr": f"<node-ip>:{node_port}"
+                    })
+
+    service_links = sorted(found, key=lambda x: (x["namespace"].lower(), x["service"].lower()))
     last_updated = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
 def background_refresh():
-    """Refresh every 5 minutes"""
     while True:
         try:
             collect_external_services()
@@ -135,16 +170,15 @@ def index():
 if __name__ == "__main__":
     load_kube_config()
 
-    # Start background updater thread
     threading.Thread(target=background_refresh, daemon=True).start()
 
-    # Initial collection
     collect_external_services()
 
-    print("Starting Kubernetes Services Dashboard on http://0.0.0.0:80")
+    port = int(os.environ.get("PORT", "8080"))
+    print(f"Starting Kubernetes Services Dashboard on http://0.0.0.0:{port}")
     app.run(
         host="0.0.0.0",
-        port=80,
+        port=port,
         debug=False,
-        threaded=True          # Better concurrency for low-traffic internal use
+        threaded=True
     )
