@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="300">  <!-- Auto-refresh every 5 minutes (300 seconds) -->
+    <meta http-equiv="refresh" content="300">  <!-- Auto-refresh every 5 minutes -->
     <title>K8s External Services Dashboard</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
@@ -26,6 +26,14 @@
         .np { background: #f39c12; color: white; }
         a { color: #e74c3c; text-decoration: none; font-weight: 500; }
         a:hover { text-decoration: underline; }
+        footer { 
+            margin-top: 4rem; 
+            text-align: center; 
+            color: #7f8c8d; 
+            font-size: 0.9em; 
+            padding-top: 1rem; 
+            border-top: 1px solid #eee; 
+        }
     </style>
 </head>
 <body>
@@ -40,18 +48,16 @@
         <thead>
             <tr>
                 <th>Namespace</th>
-                <th>Service</th>
                 <th>Type</th>
-                <th>External Address</th>
+                <th>Service</th>
             </tr>
         </thead>
         <tbody>
         {% for s in services %}
             <tr>
                 <td class="ns">{{ s.namespace }}</td>
-                <td><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.service }}</a></td>
                 <td><span class="badge {{ 'lb' if s.type == 'LoadBalancer' else 'np' }}">{{ s.type }}</span></td>
-                <td>{{ s.external_addr }}</td>
+                <td><a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.service }}</a></td>
             </tr>
         {% endfor %}
         </tbody>
@@ -59,5 +65,12 @@
     {% else %}
     <p style="color:#e74c3c; font-weight:bold;">No external (LoadBalancer/NodePort) services found at the moment.</p>
     {% endif %}
+
+    <footer>
+        Source code available on GitHub: 
+        <a href="https://github.com/openmarmot/k8s-service-dashboard" target="_blank" rel="noopener noreferrer">
+            https://github.com/openmarmot/k8s-service-dashboard
+        </a>
+    </footer>
 </body>
 </html>
