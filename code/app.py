@@ -174,6 +174,7 @@ if __name__ == "__main__":
 
     collect_external_services()
 
+    # note for k3s port 80 is already in use by the load balancer
     port = int(os.environ.get("PORT", "8080"))
     print(f"Starting Kubernetes Services Dashboard on http://0.0.0.0:{port}")
     app.run(

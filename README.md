@@ -2,7 +2,7 @@
 
 Simple web dashboard for externally exposed k8s services.
 
-The Flask app runs on port 80 and displays a dashboard of external (LoadBalancer/NodePort) Kubernetes services.
+The Flask app runs on port 8080 and displays a dashboard of external (LoadBalancer/NodePort) Kubernetes services.
 
 ## Project Structure
 
